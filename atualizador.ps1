@@ -14,7 +14,7 @@ if (-Not (Test-Path $logPath)) {
 }
 
 # Início do log
-Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) ====="
+Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) =====" -Encoding utf8
 
 # Verifica se o módulo PSWindowsUpdate está instalado
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
@@ -42,8 +42,8 @@ if ($updates.Count -eq 0) {
 
     # Instala todas as atualizações encontradas
     Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose |
-        Tee-Object -FilePath $logFile -Append
+        Out-File -FilePath $logFile -Encoding utf8 -Append
 }
 
 # Fim do log
-Add-Content -Path $logFile -Value "===== Fim da execução: $(Get-Date) =====`n"
+Add-Content -Path $logFile -Value "===== Fim da execução: $(Get-Date) =====`n" -Encoding utf8
