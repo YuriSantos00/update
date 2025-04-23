@@ -13,16 +13,17 @@ if (-Not (Test-Path $logPath)) {
     New-Item -Path $logPath -ItemType Directory -Force
 }
 
-# Cabeçalho do log
-Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) =====" -Encoding utf8
+# Início do log com Transcript
+Start-Transcript -Path $logFile -Append
+Write-Output "===== Início da execução: $(Get-Date) ====="
 
 # Verifica e instala PSWindowsUpdate, se necessário
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
     Install-Module -Name PSWindowsUpdate -Force
-    Add-Content -Path $logFile -Value "Módulo PSWindowsUpdate instalado com sucesso." -Encoding utf8
+    Write-Output "Módulo PSWindowsUpdate instalado com sucesso."
 } else {
-    Add-Content -Path $logFile -Value "Módulo PSWindowsUpdate já instalado." -Encoding utf8
+    Write-Output "Módulo PSWindowsUpdate já instalado."
 }
 
 # Importa o módulo e ativa Microsoft Update
@@ -41,9 +42,6 @@ if (-not (Test-Path $csvFile)) {
 
 # Executa updates e captura resultado da execução atual
 $updatesThisRun = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose
-
-# Também grava em log txt
-$updatesThisRun | Out-File -FilePath $logFile -Append -Encoding utf8
 
 # Enviar cada update registrado
 foreach ($update in $updatesThisRun) {
@@ -64,9 +62,9 @@ foreach ($update in $updatesThisRun) {
             -Body $json `
             -ContentType "application/json"
     } catch {
-        Add-Content -Path $logFile -Value "Erro ao enviar update '$titulo': $($_.Exception.Message)" -Encoding utf8
+        Write-Output "Erro ao enviar update '$titulo': $($_.Exception.Message)"
     }
 }
 
-# Fim do log
-Add-Content -Path $logFile -Value "===== Fim da execução: $(Get-Date) =====`n" -Encoding utf8
+Write-Output "===== Fim da execução: $(Get-Date) ====="
+Stop-Transcript
