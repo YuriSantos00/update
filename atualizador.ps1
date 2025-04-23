@@ -1,5 +1,5 @@
 
-# Atualizador.ps1 - Atualizações do Windows + log local + envio remoto
+# Atualizador.ps1 - Atualizações do Windows + log local + envio remoto + status detalhado
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -40,12 +40,27 @@ if (-not (Test-Path $csvFile)) {
     Add-Content -Path $csvFile -Value "Data,Hostname,Usuário,Título da Atualização" -Encoding utf8
 }
 
-# Executa updates e captura resultado da execução atual
-$updatesThisRun = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose
+# Executa updates e captura resultado da execução atual (com saída completa)
+$updatesThisRunRaw = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose 4>&1
+$updatesThisRun = $updatesThisRunRaw | Where-Object { $_.Result -eq "Succeeded" -or $_.Result -eq "Installed" -or $_.PSObject.Properties.Name -contains "Title" }
+
+# Log detalhado da saída bruta
+$updatesThisRunRaw | Out-String | Out-File -FilePath $logFile -Append -Encoding utf8
+
+# Contadores de status
+$instaladas = $updatesThisRun | Where-Object { $_.Result -eq "Installed" }
+$baixadas = $updatesThisRun | Where-Object { $_.Result -eq "Downloaded" }
+$falhas = $updatesThisRun | Where-Object { $_.Result -eq "Failed" }
+
+Write-Output "Total instaladas: $($instaladas.Count)"
+Write-Output "Total baixadas:   $($baixadas.Count)"
+Write-Output "Total com falha:  $($falhas.Count)"
 
 # Enviar cada update registrado
 foreach ($update in $updatesThisRun) {
     $titulo = $update.Title
+    if (-not $titulo) { continue }
+
     $linha = $date + "," + $hostname + "," + $user + "," + '"' + $titulo + '"'
     Add-Content -Path $csvFile -Value $linha -Encoding utf8
 
