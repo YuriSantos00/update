@@ -1,3 +1,4 @@
+
 # Atualizador.ps1 - Atualizações do Windows + log local + envio remoto
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -39,7 +40,7 @@ if (-not (Test-Path $csvFile)) {
 }
 
 # Executa updates e captura resultado da execução atual
-$updatesThisRun = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose
+$updatesThisRun = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose
 
 # Também grava em log txt
 $updatesThisRun | Out-File -FilePath $logFile -Append -Encoding utf8
@@ -47,7 +48,7 @@ $updatesThisRun | Out-File -FilePath $logFile -Append -Encoding utf8
 # Enviar cada update registrado
 foreach ($update in $updatesThisRun) {
     $titulo = $update.Title
-    $linha = "$date,$hostname,$user,""$titulo"""
+    $linha = "$date,$hostname,$user,"$titulo""
     Add-Content -Path $csvFile -Value $linha -Encoding utf8
 
     $json = @{
