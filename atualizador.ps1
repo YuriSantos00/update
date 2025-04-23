@@ -48,7 +48,7 @@ $updatesThisRun | Out-File -FilePath $logFile -Append -Encoding utf8
 # Enviar cada update registrado
 foreach ($update in $updatesThisRun) {
     $titulo = $update.Title
-    $linha = "$date,$hostname,$user,`"$titulo`""
+    $linha = $date + "," + $hostname + "," + $user + "," + '"' + $titulo + '"'
     Add-Content -Path $csvFile -Value $linha -Encoding utf8
 
     $json = @{
