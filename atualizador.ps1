@@ -1,4 +1,4 @@
-# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets
+# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + verificação de execução
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -40,9 +40,18 @@ if ($updates.Count -eq 0) {
 } else {
     Add-Content -Path $logFile -Value "$($updates.Count) atualização(ões) encontrada(s). Iniciando instalação..." -Encoding utf8
 
-    # Instala atualizações e registra no log
-    Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose |
-        Tee-Object -FilePath $logFile -Append -Encoding utf8
+    try {
+        Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose |
+            Tee-Object -FilePath $logFile -Append -Encoding utf8
+
+        if ($?) {
+            Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate executado com sucesso." -Encoding utf8
+        } else {
+            Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate não foi executado corretamente." -Encoding utf8
+        }
+    } catch {
+        Add-Content -Path $logFile -Value "Erro ao instalar atualizações: $($_.Exception.Message)" -Encoding utf8
+    }
 }
 
 # Coleta histórico das atualizações instaladas
@@ -60,7 +69,7 @@ $dados = @{
 
 # Envio para Google Sheets
 try {
-    Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycbwHp-e0DTsSk4u4GK3_m4Lryt7GMXIjxb68qFUsxuqjO5OkgBGQv48UGqitN5AT4WmM/exec" `
+    Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycby7UBZ4jFH10wmHC7KxYB6ZTFbeUfZcdFAoz5X3L9ln0CfomJ1Xtfqhpu14P6vlLVQ/exec" `
         -Method Post `
         -Body $dados `
         -ContentType "application/json"
