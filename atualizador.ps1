@@ -42,7 +42,7 @@ if ($updates.Count -eq 0) {
 
     try {
         Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose |
-            Tee-Object -FilePath $logFile -Append -Encoding utf8
+            Tee-Object -FilePath $logFile -Append
 
         if ($?) {
             Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate executado com sucesso." -Encoding utf8
@@ -67,9 +67,9 @@ $dados = @{
     atualizacoes = $todosUpdates
 } | ConvertTo-Json -Depth 3
 
-# Envio para Google Sheets
+# Envio para Google Sheets (novo endpoint)
 try {
-    Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycby7UBZ4jFH10wmHC7KxYB6ZTFbeUfZcdFAoz5X3L9ln0CfomJ1Xtfqhpu14P6vlLVQ/exec" `
+    Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycbwHp-e0DTsSk4u4GK3_m4Lryt7GMXIjxb68qFUsxuqjO5OkgBGQv48UGqitN5AT4WmM/exec" `
         -Method Post `
         -Body $dados `
         -ContentType "application/json"
