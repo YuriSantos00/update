@@ -1,5 +1,4 @@
-
-# Atualizador.ps1 - Atualizações do Windows + log local + envio remoto + status detalhado
+# Atualizador.ps1 - Atualizações do Windows + log local (clássico) + envio remoto
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -13,17 +12,16 @@ if (-Not (Test-Path $logPath)) {
     New-Item -Path $logPath -ItemType Directory -Force
 }
 
-# Início do log com Transcript
-Start-Transcript -Path $logFile -Append
-Write-Output "===== Início da execução: $(Get-Date) ====="
+# Cabeçalho do log
+Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) =====" -Encoding utf8
 
 # Verifica e instala PSWindowsUpdate, se necessário
 if (-not (Get-Module -ListAvailable -Name PSWindowsUpdate)) {
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
     Install-Module -Name PSWindowsUpdate -Force
-    Write-Output "Módulo PSWindowsUpdate instalado com sucesso."
+    Add-Content -Path $logFile -Value "Módulo PSWindowsUpdate instalado com sucesso." -Encoding utf8
 } else {
-    Write-Output "Módulo PSWindowsUpdate já instalado."
+    Add-Content -Path $logFile -Value "Módulo PSWindowsUpdate já instalado." -Encoding utf8
 }
 
 # Importa o módulo e ativa Microsoft Update
@@ -40,24 +38,15 @@ if (-not (Test-Path $csvFile)) {
     Add-Content -Path $csvFile -Value "Data,Hostname,Usuário,Título da Atualização" -Encoding utf8
 }
 
-# Executa updates e captura resultado da execução atual (com saída completa)
-$updatesThisRunRaw = Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose 4>&1
-$updatesThisRun = $updatesThisRunRaw | Where-Object { $_.Result -eq "Succeeded" -or $_.Result -eq "Installed" -or $_.PSObject.Properties.Name -contains "Title" }
+# Executar atualizações e registrar a saída detalhada diretamente no log
+Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -Verbose |
+    Tee-Object -FilePath $logFile -Append
 
-# Log detalhado da saída bruta
-$updatesThisRunRaw | Out-String | Out-File -FilePath $logFile -Append -Encoding utf8
+# Coleta os updates instalados com sucesso via histórico
+$updatesInstalled = Get-WUHistory | Where-Object {$_.Result -eq "Succeeded"} | Sort-Object Date -Descending | Select-Object -First 20
 
-# Contadores de status
-$instaladas = $updatesThisRun | Where-Object { $_.Result -eq "Installed" }
-$baixadas = $updatesThisRun | Where-Object { $_.Result -eq "Downloaded" }
-$falhas = $updatesThisRun | Where-Object { $_.Result -eq "Failed" }
-
-Write-Output "Total instaladas: $($instaladas.Count)"
-Write-Output "Total baixadas:   $($baixadas.Count)"
-Write-Output "Total com falha:  $($falhas.Count)"
-
-# Enviar cada update registrado
-foreach ($update in $updatesThisRun) {
+# Envia para CSV e planilha
+foreach ($update in $updatesInstalled) {
     $titulo = $update.Title
     if (-not $titulo) { continue }
 
@@ -77,9 +66,9 @@ foreach ($update in $updatesThisRun) {
             -Body $json `
             -ContentType "application/json"
     } catch {
-        Write-Output "Erro ao enviar update '$titulo': $($_.Exception.Message)"
+        Add-Content -Path $logFile -Value "Erro ao enviar update '$titulo': $($_.Exception.Message)" -Encoding utf8
     }
 }
 
-Write-Output "===== Fim da execução: $(Get-Date) ====="
-Stop-Transcript
+# Fim do log
+Add-Content -Path $logFile -Value "===== Fim da execução: $(Get-Date) =====`n" -Encoding utf8
