@@ -1,4 +1,4 @@
-# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + coleta apenas das atualizações da execução atual
+# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + bloqueio de updates Firmware/BIOS/UEFI
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -34,40 +34,59 @@ $dataHoraInicio = Get-Date
 $dataHoraTexto = $dataHoraInicio.ToString("yyyy-MM-dd HH:mm:ss")
 
 # Lista atualizações disponíveis
-$updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll
+$updatesDisponiveis = Get-WindowsUpdate -MicrosoftUpdate
 
-if ($updates.Count -eq 0) {
+if ($updatesDisponiveis.Count -eq 0) {
     Add-Content -Path $logFile -Value "Nenhuma atualização pendente encontrada." -Encoding utf8
 } else {
-    Add-Content -Path $logFile -Value "$($updates.Count) atualização(ões) encontrada(s). Iniciando instalação..." -Encoding utf8
+    Add-Content -Path $logFile -Value "$($updatesDisponiveis.Count) atualização(ões) detectada(s)." -Encoding utf8
 
-    try {
-        Install-WindowsUpdate -AcceptAll -MicrosoftUpdate -IgnoreReboot -Verbose |
-            Tee-Object -FilePath $logFile -Append
+    # Palavras que bloqueiam instalação
+    $palavrasBloqueadas = @("Firmware", "BIOS", "UEFI", "Thunderbolt", "System Firmware", "Dock Firmware")
 
-        if ($?) {
-            Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate executado com sucesso." -Encoding utf8
-        } else {
-            Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate não foi executado corretamente." -Encoding utf8
+    # Filtrar updates permitidos
+    $updatesPermitidos = $updatesDisponiveis | Where-Object {
+        ($_.Title -notmatch ($palavrasBloqueadas -join "|"))
+    }
+
+    if ($updatesPermitidos.Count -gt 0) {
+        Add-Content -Path $logFile -Value "$($updatesPermitidos.Count) atualização(ões) permitida(s) para instalação:" -Encoding utf8
+        foreach ($update in $updatesPermitidos) {
+            Add-Content -Path $logFile -Value "  - $($update.Title)" -Encoding utf8
         }
-    } catch {
-        Add-Content -Path $logFile -Value "Erro ao instalar atualizações: $($_.Exception.Message)" -Encoding utf8
+
+        try {
+            $updatesPermitidos | Install-WindowsUpdate -AcceptAll -IgnoreReboot -MicrosoftUpdate -Verbose |
+                Tee-Object -FilePath $logFile -Append
+
+            if ($?) {
+                Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate executado com sucesso (somente updates permitidos)." -Encoding utf8
+            } else {
+                Add-Content -Path $logFile -Value "Comando Install-WindowsUpdate falhou." -Encoding utf8
+            }
+        } catch {
+            Add-Content -Path $logFile -Value "Erro ao instalar atualizações: $($_.Exception.Message)" -Encoding utf8
+        }
+    } else {
+        Add-Content -Path $logFile -Value "Nenhuma atualização permitida para instalação (todas bloqueadas por regra)." -Encoding utf8
     }
 }
 
-# Aguardar alguns segundos para garantir que Get-WUHistory atualizou
+# Aguardar alguns segundos para garantir Get-WUHistory atualizado
 Start-Sleep -Seconds 10
 
-# Coleta histórico das atualizações instaladas após a execução
-$dataHoraLimite = $dataHoraInicio.AddMinutes(-5) # Coletar updates nos últimos 5 minutos para segurança
+# Coletar histórico apenas dos updates recentes e permitidos
+$dataHoraLimite = $dataHoraInicio.AddMinutes(-5)
 $updatesHist = Get-WUHistory | Where-Object {
-    $_.Result -eq "Succeeded" -and $_.Date -ge $dataHoraLimite
+    $_.Result -eq "Succeeded" -and
+    $_.Date -ge $dataHoraLimite -and
+    ($_.Title -notmatch ($palavrasBloqueadas -join "|"))
 } | Sort-Object Date -Descending
 
 $titulos = $updatesHist | ForEach-Object { $_.Title }
 $todosUpdates = $titulos -join "; "
 
-# Monta dados JSON com codificação segura
+# Montar JSON seguro
 $payload = @{ 
     data         = $dataHoraTexto
     hostname     = $hostname
