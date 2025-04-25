@@ -11,7 +11,7 @@ if (-Not (Test-Path $logPath)) {
     New-Item -Path $logPath -ItemType Directory -Force
 }
 
-# Início do log
+# Início da execução
 Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) =====" -Encoding utf8
 
 # Verifica e instala PSWindowsUpdate
@@ -59,21 +59,23 @@ $updatesHist = Get-WUHistory | Where-Object {$_.Result -eq "Succeeded"} | Sort-O
 $titulos = $updatesHist | ForEach-Object { $_.Title }
 $todosUpdates = $titulos -join "; "
 
-# JSON para envio
-$dados = @{
+# Monta dados JSON com codificação segura
+$payload = @{ 
     data         = $dataHora
     hostname     = $hostname
     so           = $so
     atualizacoes = $todosUpdates
-} | ConvertTo-Json -Depth 3
+}
+$json = $payload | ConvertTo-Json -Depth 3
+$body = [System.Text.Encoding]::UTF8.GetBytes($json)
 
-# Envio para Google Sheets (novo endpoint)
+# Envio para Google Sheets
 try {
-    Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycbwHp-e0DTsSk4u4GK3_m4Lryt7GMXIjxb68qFUsxuqjO5OkgBGQv48UGqitN5AT4WmM/exec" `
+    $response = Invoke-RestMethod -Uri "https://script.google.com/macros/s/AKfycbwHp-e0DTsSk4u4GK3_m4Lryt7GMXIjxb68qFUsxuqjO5OkgBGQv48UGqitN5AT4WmM/exec" `
         -Method Post `
-        -Body $dados `
+        -Body $body `
         -ContentType "application/json"
-    Add-Content -Path $logFile -Value "Envio para Google Sheets concluído com sucesso." -Encoding utf8
+    Add-Content -Path $logFile -Value "Envio para Google Sheets concluído com sucesso. Resposta: $response" -Encoding utf8
 } catch {
     Add-Content -Path $logFile -Value "Erro ao enviar para Google Sheets: $($_.Exception.Message)" -Encoding utf8
 }
