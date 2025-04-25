@@ -1,4 +1,4 @@
-# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + verificação de execução
+# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + coleta apenas das atualizações da execução atual
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -30,7 +30,8 @@ Add-WUServiceManager -MicrosoftUpdate -Confirm:$false
 # Informações da máquina
 $hostname = $env:COMPUTERNAME
 $so = (Get-CimInstance Win32_OperatingSystem).Caption
-$dataHora = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$dataHoraInicio = Get-Date
+$dataHoraTexto = $dataHoraInicio.ToString("yyyy-MM-dd HH:mm:ss")
 
 # Lista atualizações disponíveis
 $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll
@@ -54,14 +55,21 @@ if ($updates.Count -eq 0) {
     }
 }
 
-# Coleta histórico das atualizações instaladas
-$updatesHist = Get-WUHistory | Where-Object {$_.Result -eq "Succeeded"} | Sort-Object Date -Descending | Select-Object -First 10
+# Aguardar alguns segundos para garantir que Get-WUHistory atualizou
+Start-Sleep -Seconds 10
+
+# Coleta histórico das atualizações instaladas após a execução
+$dataHoraLimite = $dataHoraInicio.AddMinutes(-5) # Coletar updates nos últimos 5 minutos para segurança
+$updatesHist = Get-WUHistory | Where-Object {
+    $_.Result -eq "Succeeded" -and $_.Date -ge $dataHoraLimite
+} | Sort-Object Date -Descending
+
 $titulos = $updatesHist | ForEach-Object { $_.Title }
 $todosUpdates = $titulos -join "; "
 
 # Monta dados JSON com codificação segura
 $payload = @{ 
-    data         = $dataHora
+    data         = $dataHoraTexto
     hostname     = $hostname
     so           = $so
     atualizacoes = $todosUpdates
