@@ -1,4 +1,4 @@
-# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + bloqueio de updates Firmware/BIOS/UEFI
+# Atualizador.ps1 - Windows Update + log local + envio para Google Sheets + bloqueio de firmware + alerta de reinício
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -6,12 +6,10 @@
 $logPath = "C:\Appmax"
 $logFile = Join-Path $logPath "update-log.txt"
 
-# Criar diretório, se necessário
 if (-Not (Test-Path $logPath)) {
     New-Item -Path $logPath -ItemType Directory -Force
 }
 
-# Início da execução
 Add-Content -Path $logFile -Value "`n===== Início da execução: $(Get-Date) =====" -Encoding utf8
 
 # Verifica e instala PSWindowsUpdate
@@ -41,10 +39,8 @@ if ($updatesDisponiveis.Count -eq 0) {
 } else {
     Add-Content -Path $logFile -Value "$($updatesDisponiveis.Count) atualização(ões) detectada(s)." -Encoding utf8
 
-    # Palavras que bloqueiam instalação
+    # Palavras bloqueadas (não instalar Firmware, BIOS, UEFI)
     $palavrasBloqueadas = @("Firmware", "BIOS", "UEFI", "Thunderbolt", "System Firmware", "Dock Firmware")
-
-    # Filtrar updates permitidos
     $updatesPermitidos = $updatesDisponiveis | Where-Object {
         ($_.Title -notmatch ($palavrasBloqueadas -join "|"))
     }
@@ -72,10 +68,10 @@ if ($updatesDisponiveis.Count -eq 0) {
     }
 }
 
-# Aguardar alguns segundos para garantir Get-WUHistory atualizado
+# Espera para garantir que Get-WUHistory atualizou
 Start-Sleep -Seconds 10
 
-# Coletar histórico apenas dos updates recentes e permitidos
+# Coleta histórico dos updates instalados recentes e permitidos
 $dataHoraLimite = $dataHoraInicio.AddMinutes(-5)
 $updatesHist = Get-WUHistory | Where-Object {
     $_.Result -eq "Succeeded" -and
@@ -87,7 +83,7 @@ $titulos = $updatesHist | ForEach-Object { $_.Title }
 $todosUpdates = $titulos -join "; "
 
 # Montar JSON seguro
-$payload = @{ 
+$payload = @{
     data         = $dataHoraTexto
     hostname     = $hostname
     so           = $so
@@ -105,6 +101,36 @@ try {
     Add-Content -Path $logFile -Value "Envio para Google Sheets concluído com sucesso. Resposta: $response" -Encoding utf8
 } catch {
     Add-Content -Path $logFile -Value "Erro ao enviar para Google Sheets: $($_.Exception.Message)" -Encoding utf8
+}
+
+# Função para detectar se reboot é necessário
+function Test-RebootRequired {
+    return (
+        (Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending") -or
+        (Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired") -or
+        (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\PendingFileRenameOperations")
+    )
+}
+
+# Se precisar reiniciar, alertar o usuário
+if (Test-RebootRequired) {
+    Add-Content -Path $logFile -Value "⚠️ Reinicialização requerida. Iniciando alertas para o usuário." -Encoding utf8
+    do {
+        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+        $template = [Windows.UI.Notifications.ToastTemplateType]::ToastText02
+        $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent($template)
+        $xml.GetElementsByTagName("text")[0].AppendChild($xml.CreateTextNode("Atualizações concluídas!")) | Out-Null
+        $xml.GetElementsByTagName("text")[1].AppendChild($xml.CreateTextNode("⚠️ Por favor, reinicie seu computador.")) | Out-Null
+
+        $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+        $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Atualizador Appmax")
+        $notifier.Show($toast)
+
+        Start-Sleep -Seconds 600  # Aguardar 10 minutos
+    } while (Test-RebootRequired)
+    Add-Content -Path $logFile -Value "✅ Reinicialização detectada. Alerta encerrado." -Encoding utf8
+} else {
+    Add-Content -Path $logFile -Value "✅ Nenhuma reinicialização necessária." -Encoding utf8
 }
 
 # Fim do log
