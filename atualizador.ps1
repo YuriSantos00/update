@@ -103,35 +103,27 @@ try {
     Add-Content -Path $logFile -Value "Erro ao enviar para Google Sheets: $($_.Exception.Message)" -Encoding utf8
 }
 
-# Função para detectar se reboot é necessário
-function Test-RebootRequired {
-    return (
-        (Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending") -or
-        (Test-Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired") -or
-        (Test-Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\PendingFileRenameOperations")
-    )
-}
+# ⚠️ Após qualquer instalação, sempre solicitar reinício
+Add-Content -Path $logFile -Value "⚠️ Alerta de reinicialização ativado (a cada 10 minutos)." -Encoding utf8
 
-# Se precisar reiniciar, alertar o usuário
-if (Test-RebootRequired) {
-    Add-Content -Path $logFile -Value "⚠️ Reinicialização requerida. Iniciando alertas para o usuário." -Encoding utf8
-    do {
-        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-        $template = [Windows.UI.Notifications.ToastTemplateType]::ToastText02
-        $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent($template)
-        $xml.GetElementsByTagName("text")[0].AppendChild($xml.CreateTextNode("Atualizações concluídas!")) | Out-Null
-        $xml.GetElementsByTagName("text")[1].AppendChild($xml.CreateTextNode("⚠️ Por favor, reinicie seu computador.")) | Out-Null
+do {
+    try {
+        msg * "❌ Atualizações instaladas. Por favor, reinicie seu computador para concluir a aplicação dos patches de segurança."
+        Add-Content -Path $logFile -Value "🔔 Alerta enviado via msg.exe em: $(Get-Date)" -Encoding utf8
+    } catch {
+        Add-Content -Path $logFile -Value "❌ Erro ao exibir mensagem via msg.exe: $($_.Exception.Message)" -Encoding utf8
+    }
 
-        $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-        $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Atualizador Appmax")
-        $notifier.Show($toast)
+    # Espera 10 minutos antes de repetir
+    Start-Sleep -Seconds 600
 
-        Start-Sleep -Seconds 600  # Aguardar 10 minutos
-    } while (Test-RebootRequired)
-    Add-Content -Path $logFile -Value "✅ Reinicialização detectada. Alerta encerrado." -Encoding utf8
-} else {
-    Add-Content -Path $logFile -Value "✅ Nenhuma reinicialização necessária." -Encoding utf8
-}
+    # Opcional: parar se o computador for reiniciado (reboot limpa os paths pendentes)
+    $reiniciado = -not (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations") `
+                  -and -not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") `
+                  -and -not (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending")
+} while (-not $reiniciado)
+
+Add-Content -Path $logFile -Value "✅ Reinicialização detectada. Alertas encerrados em: $(Get-Date)" -Encoding utf8
 
 # Fim do log
 Add-Content -Path $logFile -Value "===== Fim da execução: $(Get-Date) =====`n" -Encoding utf8
